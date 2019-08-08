@@ -72,9 +72,9 @@ class Derived extends Base {
 
 ### 为什么不能直接访问`this`的字段，比如持有一个不常见的`x`来指向私有字段`x`?
 
-本提案的一个目标是：通过某些语法，允许访问相同类的其他实例的私有字段。并且使用不常见标识符来指向属性是不符合 JS way 的（譬如 `with`关键字，通常被认为是一个失败的设计）。
+本提案的一个目标是：通过某些语法，允许访问相同类的其他实例的私有字段（见下）。并且使用不常见标识符来指向属性是不符合 JS way 的（譬如 `with`关键字，通常被认为是一个失败的设计）。
 
-## 鉴于`this.#x`可以访问私有字段，那`this['x']`为什么不行？
+## 鉴于`this.#x`可以访问私有字段，那`this['#x']`为什么不行？
 
 1. 这会使属性访问语义变复杂。
 
@@ -94,7 +94,7 @@ class Dict extends null {
 (new Dict).get('#data'); // returns something_secret
 ```
 
-### `this.#x`与`this['x']`有不同的语义破坏了当前语义的平衡吗？
+### `this.#x`与`this['#x']`有不同的语义破坏了当前语义的平衡吗？
 
 不完全是，但这确实是一个争议。`this.#x`是新的语法，从这点上是毫无影响的。
 
@@ -102,7 +102,7 @@ class Dict extends null {
 
 ## 为什么不省掉点语法，直接用`this#x`访问？
 
-稍后我们会介绍一种简写：`#x`代替`this.#x`。这会使简写语法有一个[ASI风险](https://github.com/tc39/proposal-private-fields/issues/39#issuecomment-237121552)
+稍后我们会介绍一种简写：`#x`代替`this.#x`。不加点会使简写语法有[ASI风险](https://github.com/tc39/proposal-private-fields/issues/39#issuecomment-237121552)
 
 更一般地说，委员会大多认为：`this.#`更明显地表示了字段访问。
 
@@ -122,7 +122,7 @@ class A {
 }
 ```
 
-## 为什么本提案允许访问相同类的其他实例的私有字段？其他语言通常不会禁止这样做吗？
+## 为什么本提案允许访问相同类的其他实例的私有字段？其他语言不禁止这样吗？
 
 这很有用，请看readme中，`Point`的`equals`方法的例子（译者按：我没找到）。事实上，[其他语言](https://github.com/tc39/proposal-private-fields/issues/90#issuecomment-307201358)也因为相同的原因而允许这样做，下面的例子在Java中完全合法：
 
@@ -136,13 +136,13 @@ class Point {
 
 ## 在所有的Unicode符号中，为什么选择了`#`？
 
-没人说`#`是一个更好看、更符合直觉的符号来表示私有状态。这是排除法的结果：
+没人说`#`是一个更好看、更符合直觉的表示私有状态的符号。这是排除法的结果：
 
 - `@`是首选，但是它被装饰器先占用了。TC39考虑过交换装饰器与私有状态符，但最终委员会决定遵循现有转换编译器用户的使用习惯。
 
 - `_`会导致现存JavaScript代码的兼容性问题。长时间以来，js都允许在标识符和（公有）属性名前加`_`。
 
-- 其他可以被用作中缀操作符且不是前缀操作符的符号，例如`%`，`^`，`&`，`?`——在当前椰树的语法环境下，`x.%y`不合法因而不会有二义性——都是有可能的。然后简写会导致ASI问题，比如下面的例子看起来就像是在使用中缀操作符：
+- 其他可以被用作中缀操作符且不是前缀操作符的符号，例如`%`，`^`，`&`，`?`——在当前js的语法环境下，`x.%y`不合法因而不会有二义性——都是有可能的。但是简写会导致ASI问题，比如下面的例子看起来就像是在使用中缀操作符：
 
 ```js
 class Foo {
@@ -168,6 +168,173 @@ class Foo {
 
 - `private(that)`看起来像是一个单独的表达式，但是这会导致几个问题：
 
-- - 如果`private(that)`表示一个对象含有私有字段，这会使优化这个对象额外的独立空间变得困难。
+- - 如果`private(that)`表示一个有私有字段的对象，这会使优化这个对象额外的独立空间变得困难。
 
-- - 
+- - 如果`private(that)`单独使用是语法错误，必须要在其后进行属性访问，这与函数和伪函数(如`import()`)在JavaScript中的工作方式截然不同。
+
+## 为什么本提案不允许机制（mechanism）从声明该私有字段的类外（比如测试程序）访问或者修改它？其他语言也不允许这样吗？
+
+这样做会破坏封装（理由见下）。其他语言允许这样做也不是一个十分充分的理由，特别是某些语言(例如c++)，是通过直接修改内存来实现的。这不是一个必要的目的。
+
+## “封装”/“强私有（hard private）”是什么意思？
+
+它们表示私有字段*纯粹*是内部的：如果不直接查看类的源码，除非类主动暴露，否则类外部的JS代码（包括子类与父类）应该无法探知或影响该类实例的任何私有字段的存在、名称或值，
+
+这意味着诸如[getOwnPropertySymbols](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/getOwnPropertySymbols)等映射方法是不能暴露私有字段的。
+
+这也意味着，如一个类有个叫`x`的私有字段，那么该类的实例`obj`在类外执行`obj.x`的时候，应该去访问共有字段，就好像该类没有私有字段一样。禁止访问私有字段，否则，就要抛出错误。注意，在其他像Java一样，在编译时期进行类型检查，并且只能通过映射APIs来动态访问字段的语言中，这并不常见。
+
+## 封装为什么是本提案的一个目标？
+
+1. 库的作者们发现，用户会使用任何暴露在外的接口，哪怕这些接口并不在文档里。同时，作者们不认为自己可以仅仅因为，用户使用了本不想让用户使用的接口，就去破坏用户们编写的页面与app。因此，他们希望用强私有(hard private)状态来更完备地隐藏实现细节。
+
+2. 尽管现在已经可以用per-instance闭包或WeakMaps（见下）实现封装，但这两种方法反人类地使用了class，并且在内存使用语义上让人迷惑。除此之外，per-instance闭包不允许同一个类的不同实例相互访问私有字段（见上），而WeakMaps有潜在的暴露私有数据的风险。另外，WeakMaps大多数情况下要比私有字段慢。
+
+3. 使用Symbol作为属性名同样可以实现“隐藏”但不封装。（见下）
+
+本提案目前偏向于强私有（hard private），让装饰器或者其他机制（mechanism）为类提供一个可选的对外接口。我们打算在此过程中收集反馈，以确定这是否是正确的语义。
+
+了解更多请看[此issue](https://github.com/tc39/proposal-private-fields/issues/33)。
+
+### 如何用WeakMaps实现封装？
+
+```js
+const Person = (function(){
+  const privates = new WeakMap;
+  let ids = 0;
+  return class Person {
+    constructor(name) {
+      this.name = name;
+      privates.set(this, {id: ids++});
+    }
+    equals(otherPerson) {
+      return privates.get(this).id === privates.get(otherPerson).id;
+    }
+  }
+})();
+let alice = new Person('Alice');
+let bob = new Person('Bob');
+alice.equals(bob); // false
+```
+
+这种方法存在潜在危险。
+
+假设我们想增加一个自定义的回调函数来构造 greetings：
+
+```js
+const Person = (function(){
+  const privates = new WeakMap;
+  let ids = 0;
+  return class Person {
+    constructor(name, makeGreeting) {
+      this.name = name;
+      privates.set(this, {id: ids++, makeGreeting});
+    }
+    equals(otherPerson) {
+      return privates.get(this).id === privates.get(otherPerson).id;
+    }
+    greet(otherPerson) {
+      return privates.get(this).makeGreeting(otherPerson.name);
+    }
+  }
+})();
+let alice = new Person('Alice', name => `Hello, ${name}!`);
+let bob = new Person('Bob', name => `Hi, ${name}.`);
+alice.equals(bob); // false
+alice.greet(bob); // === 'Hello, Bob!'
+```
+
+虽然看上去是ok的，但是：
+
+```js
+let mallory = new Person('Mallory', function(name) {this.id = 0; return `o/ ${name}`;});
+mallory.greet(bob); // === 'o/ Bob'
+mallory.equals(alice); // true. Oops!
+```
+
+### 如何用Symbols实现隐藏但不封装？
+
+```js
+const Person = (function(){
+  const _id = Symbol('id');
+  let ids = 0;
+  return class Person {
+    constructor(name) {
+      this.name = name;
+      this[_id] = ids++;
+    }
+    equals(otherPerson) {
+      return this[_id] === otherPerson[_id];
+    }
+  }
+})();
+let alice = new Person('Alice');
+let bob = new Person('Bob');
+alice.equals(bob); // false
+
+alice[Object.getOwnPropertySymbols(alice)[0]]; // == 0, which is alice's id.
+```
+
+### 此提案与brand checks的关系？
+
+本提案仅仅在对象构造函数里增加了私有字段，也增添了访问不存在私有字段的异常。有有些人将“brand check”归因于这些属性的组合，但是社区一直在讨论到底要提供哪种“保证”。可以明确的是，目前可以提供的保证就是。**如果一个实例含有 声明在特定类里的私有字段，那么该类的构造函数只为此实例运行**。
+
+比如，给出如下定义：
+
+```js
+class F { #f; checkF() { this.#f; } }
+class G extends F { #g; checkG() { this.#g; } }
+```
+
+如果一个对象`obj`没有响应 `F.prototype.checkF.call(obj)`，我们可以认为 `obj`是被 `new F`创建的。
+
+相比而言，由于原型链是可变的，我们并不知道“一个不是从`G.prototype.checkG.call(obj)`抛出的对象”的全部信息——在这种情况下，我们只知道`new G`被调用了，然后父类的构造函数返回了`obj`。比如，以下可能是一个用了“super return trick"的情况：
+
+```js
+let obj = { };
+Object.setPrototypeOf(G, class { constructor() { return obj; });
+new G;
+Object.setPrototypeOf(G, F);
+G.prototype.checkG.call(obj);  // doesn't throw
+F.prototype.checkF.call(obj);  // throws
+```
+
+这个奇怪的幽灵对象`obj`有"G"的 “brand”而不是“F”。这不能被认为是“broken”，这只是类的动态原型链给了开发者做这种事情的灵活性而已。有时候，“可预测性”比“灵活性”更有用。
+
+我们可以通过防止在构造对象时动态查询的原型链的突变来阻止这种模式。比如，你可以调用`Object.preventExtensions(G)`来确保`G`的父类是`F`。这种情况下，对象即使不响应`checkG`，也仍然有一个私有字段`#F`。
+
+### 私有字段与Proxy如何一起使用？
+
+一个Proxy目标对象的私有字段不能被Proxy本身访问。比如，下面的例子应该抛出类型错误：
+
+```js
+class K { #x; get x() { return this.#x; } }
+let k = new Proxy(new K, { });
+k.x  // TypeError
+```
+
+这有点像内部插槽或WeakMaps：目标对象里的私有字段并没有传递给Proxy。虽然这种行为不满足“Proxy以一种透明的方式观察对象操作”的期望，但是不传递行为支持以下功能：
+
+- 私有字段可用于匹配内部插槽的行为的补充，而不会对Proxy的行为产生影响。
+
+- Proxy目标对象被封装，不需要将目标对象的信息泄露给Proxy使用，也不需要将私有字段的任何信息泄露给Proxy traps
+
+- 语义类似于WeakMap，它为程序员提供了一个简单的心智模型(所有东西要么是属性要么是一个WeakMap)，而不是第三种选择。
+
+但是反过来，Proxy对象可以用“super return trick”在其上直接定义私有字段。例子如下：
+
+```js
+class Super { constructor(x) { return x; } }
+class Trick extends Super {
+  #x;
+  checkX() { this.#x; }
+}
+
+let target = { };
+let proxy = new Proxy(target, { });
+new Trick(proxy);
+Trick.prototype.checkX.call(proxy);   // No exception thrown
+Trick.prototype.checkX.call(target);  // TypeError
+```
+
+解决“目标对象的私有字段不能传递给Proxy”的一种办法是用 membrane pattern，例子见[Salesforce's Observable Membrane](https://github.com/salesforce/observable-membrane)。
